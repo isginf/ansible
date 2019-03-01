@@ -59,9 +59,9 @@ a HTTP GET to the URL above on every push.
 Make sure to boot the operating system installer pointing to the
 respective URL, in pxelinux, this could look like:
 
-   APPEND initrd=ubuntu-cosmic-amd64-initrd.gz priority=critical auto=true url=https://SERVER/bootstrap/ubuntu/cosmic/preseed.cfg
-   KERNEL ubuntu-cosmic-amd64-linux
+    APPEND initrd=ubuntu-cosmic-amd64-initrd.gz priority=critical auto=true url=https://SERVER/bootstrap/ubuntu/cosmic/preseed.cfg
+    KERNEL ubuntu-cosmic-amd64-linux
 
-   APPEND initrd=rhel-7-x86_64-initrd.img text ks=https://SERVER/bootstrap/rhel/7/kickstart.cfg
-   KERNEL rhel-7-x86_64-vmlinuz
+    APPEND initrd=rhel-7-x86_64-initrd.img text ks=https://SERVER/bootstrap/rhel/7/kickstart.cfg
+    KERNEL rhel-7-x86_64-vmlinuz
 
