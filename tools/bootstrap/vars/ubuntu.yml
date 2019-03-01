@@ -1,0 +1,3 @@
+---
+# overwrite default ansible repo
+ansible_repo: https://git.example.com/ansible-ubuntu.git

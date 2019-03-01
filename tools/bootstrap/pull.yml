@@ -1,0 +1,12 @@
+---
+remote_ip:
+  - 1.2.3.4 # git.example.com
+
+commands:
+  - git reset --hard
+  - git clean -f
+  - git pull
+
+repos:
+  inventory: ../inventory
+  bootstrap: .

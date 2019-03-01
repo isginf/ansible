@@ -1,0 +1,102 @@
+#
+# Locale
+#
+
+d-i debian-installer/locale string en_US.UTF-8
+d-i localechooser/supported-locales en_DK.UTF-8 de_CH.UTF-8
+
+#
+# Keyboard
+#
+
+d-i keyboard-configuration/xkb-keymap select {{ keyboard | default('us') }}
+
+#
+# Network
+#
+
+d-i netcfg/choose_interface select auto
+d-i netcfg/wireless_wep string
+
+{% if mirror %}
+#
+# Mirror
+#
+
+d-i mirror/country string manual
+d-i mirror/http/hostname string {{ mirror }}
+d-i mirror/http/directory string /ubuntu 
+d-i mirror/http/proxy string
+
+d-i apt-setup/restricted boolean true
+d-i apt-setup/universe boolean true
+d-i apt-setup/backports boolean true
+d-i apt-setup/services-select multiselect security
+d-i apt-setup/security_host string {{ mirror }}
+d-i apt-setup/security_path string /ubuntu 
+{% endif %}
+
+#
+# Accounts
+#
+
+d-i passwd/root-login boolean true
+d-i passwd/make-user boolean false
+d-i passwd/root-password-crypted password {{ root_pw }}
+
+#
+# Timezone
+#
+
+d-i clock-setup/utc boolean true
+d-i time/zone string Europe/Zurich
+
+#
+# Partitioning
+#
+
+d-i partman/early_command string pvremove -y -ff {{ disk | default('/dev/sda') }}* ; true
+
+d-i partman-lvm/device_remove_lvm boolean true
+d-i partman-lvm/device_remove_lvm_span boolean true
+d-i partman-md/device_remove_md boolean true
+d-i partman-lvm/confirm boolean true
+d-i partman-lvm/confirm_nooverwrite boolean true
+d-i partman-auto/purge_lvm_from_device boolean true
+
+d-i partman-auto/disk string {{ disk | default('/dev/sda') }}
+d-i partman-auto/method string lvm
+d-i partman-auto/choose_recipe select atomic
+
+d-i partman/default_filesystem string ext4
+d-i partman-partitioning/confirm_write_new_label boolean true
+d-i partman/choose_partition select finish
+d-i partman/confirm boolean true
+d-i partman/confirm_nooverwrite boolean true
+d-i partman-md/confirm boolean true
+
+#
+# Booting
+#
+
+d-i grub-installer/bootdev string {{ disk | default('/dev/sda') }}
+d-i grub-installer/only_debian boolean true
+
+#
+# Package
+#
+
+tasksel tasksel/first multiselect
+
+d-i pkgsel/include string openssh-server vim
+d-i base-installer/excludes installation-report
+
+#
+# Latecommand
+#
+
+d-i finish-install/reboot_in_progress note
+d-i preseed/late_command string \
+	wget -O/target/tmp/latecommand.sh https://{{ server }}/bootstrap/{{ os_name }}/{{ os_version }}/latecommand.sh ;\
+	chmod +x /target/tmp/latecommand.sh ;\
+	in-target /tmp/latecommand.sh
