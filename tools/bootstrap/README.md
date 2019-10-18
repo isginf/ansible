@@ -13,18 +13,23 @@ repositories (bootstrap or inventory) change.
 
 ## Variables
 
-### Sources (in order of precedence from weakest to strongest):
+### Sources (in order of precedence from weakest to strongest)
 
+- defaults (*ALL*)
 - inventory (*ALL*)
+- vars_files (*ALL*, in order mentioned in cgi.yml)
 - webserver (os_name, os_version, filename, hostname)
-- vars_files (*ALL*, in order mentioned above)
-- script (template, vars_files, template_files, date, time)
+- script (template, vars_files, template_files, binary_files, template_dir,
+          binary_dir, vars_dir, defaults, date, time)
 
-### Availability:
+### Availability (compare sources above)
 
-- inside templates:        inventory, webserver, vars_files, script
-- cgi.yml: template_files: inventory, webserver, vars_files
-- cgi.yml: vars_files:     inventory, webserver
+- inside defaults:         webserver
+- cgi.yml: vars_files:     webserver, defaults, inventory
+- inside vars_files:       webserver, defaults, inventory
+- cgi.yml: binary_files:   webserver, defaults, inventory, vars_files
+- cgi.yml: template_files: webserver, defaults, inventory, vars_files
+- inside templates:        webserver, defaults, inventory, vars_files, script
 
 Formatting: http://jinja.pocoo.org/docs/2.10/
 

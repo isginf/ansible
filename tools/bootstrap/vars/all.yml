@@ -1,4 +1,3 @@
 ---
-root_pw: $1$ThisIsAnExamplePasswordHashForEtcShadow
 inventory_repo: https://git.example.com/inventory.git
 ansible_repo: https://git.example.com/ansible.git

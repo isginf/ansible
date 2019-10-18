@@ -29,7 +29,7 @@ hosts = [os.path.basename(os.path.splitext(x)[0]) for x in varsglob]
 def list_vars(hostvars):
     return {
         '_meta': {
-            'hostvars': hostvars
+            'hostvars': {host:var if var is not None else {} for (host,var) in hostvars.items()}
         }
     }
 
@@ -40,7 +40,7 @@ def list_all():
         'all': {
             'hosts': hosts,
             'vars': {}
-        },
+        }
     })
     return ret
 

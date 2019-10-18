@@ -5,19 +5,70 @@
 from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
-import cgitb, os, socket, datetime, subprocess, jinja2, yaml, re, binascii
+import os, sys, socket, datetime, subprocess, jinja2, yaml, re, binascii, traceback
 
-###### UNCOMMENT TO DEBUG #######
-# cgitb.enable(format = 'plain')
-#################################
-
-print('Content-Type: text/plain\n')
+############# UNCOMMENT TO DEBUG ##############
+# import cgitb; cgitb.enable(format = 'plain')
+###############################################
 
 #
 # Functions
 #
 
+def ansible_inventory(inventory_dir, host, ignore_ansible_stderr=True):
+    from ansible.vars.manager import VariableManager
+    from ansible.inventory.manager import InventoryManager
+    from ansible.parsing.dataloader import DataLoader
+
+    # bug solved in ansible 2.6+: printing an empty stderr!
+    if ignore_ansible_stderr: sys.stderr = open(os.devnull, 'w')
+
+    loader = DataLoader()
+    inventory = InventoryManager(loader=loader, sources=unicode(inventory_dir))
+    vm = VariableManager(loader=loader, inventory=inventory)
+
+    hosts = inventory.get_hosts(unicode(host))
+
+    if len(hosts) != 1:
+        raise KeyError('Host %s does not match a (single) host in %s' % (host, inventory_dir))
+
+    hostvars = vm.get_vars(host=hosts[0], include_hostvars=False)
+
+    # restore default
+    if ignore_ansible_stderr: sys.stderr = sys.__stderr__
+
+    return hostvars
+
+def j2_render_dict(d, data):
+    r = {};
+    for k, v in d.items():
+        if isinstance(v, dict):
+            r.update({k: j2_render_dict(v, data)})
+        if isinstance(v, list):
+            r.update({k: j2_render_list(v, data)})
+        elif isinstance(v, str):
+            # TODO j2 always returns a unicode (str) - want to be able to get complex types like in Ansible!
+            r.update({k: jinja2.Environment(loader=jinja2.BaseLoader, undefined=jinja2.StrictUndefined).from_string(v).render(data)})
+        else:
+            r.update({k: v})
+    return r
+
+def j2_render_list(l, data):
+    r = [];
+    for v in l:
+        if isinstance(v, dict):
+            r.append(j2_render_dict(v, data))
+        if isinstance(v, list):
+            r.append(j2_render_list(v, data))
+        elif isinstance(v, str):
+            # TODO j2 always returns a unicode (str) - want to be able to get complex types like in Ansible!
+            r.append(jinja2.Environment(loader=jinja2.BaseLoader, undefined=jinja2.StrictUndefined).from_string(v).render(data))
+        else:
+            r.append(v)
+    return r
+
 def abort(msg):
+    print('Content-Type: text/plain\n')
     print('\n'.join([''.join(['# ', l]) for l in msg.split('\n')]))
     exit(0)
 
@@ -43,15 +94,17 @@ except:
 # Read config
 #
 
+conf_file = 'cgi.yml'
+
 try:
-    conf = yaml.load(open(cwd + '/cgi.yml'))
+    conf = yaml.load(open(os.path.join(cwd, conf_file)))
 except yaml.YAMLError as e:
-    abort('Error in config file %s' % str(e))
+    abort('Error in config file %s' % e)
 except:
-    abort('Error: Could not read config file %s' % os.path.join(cwd, 'cgi.yml'))
+    abort('Error: Could not read config file %s' % os.path.join(cwd, conf_file))
 
 # Allow relative paths
-for dir in ['bootlink_dir', 'inventory_dir', 'template_dir', 'vars_dir']:
+for dir in ['bootlink_dir', 'inventory_dir', 'template_dir', 'binary_dir', 'vars_dir', 'defaults']:
     if not os.path.isabs(conf[dir]):
         conf[dir] = os.path.join(cwd, conf[dir])
 
@@ -81,30 +134,19 @@ if conf['bootlink_check']:
 #
 
 try:
-    ansible = subprocess.Popen(
-        ['ansible-inventory', '-y', '-i', conf['inventory_dir'], '--host', hostname],
-        stdout = subprocess.PIPE,
-        stderr = subprocess.PIPE,
-    )
-    stdout, stderr = ansible.communicate()
-    if ansible.returncode == 5:
-        abort('Error: Host %s is not in inventory' % hostname)
-    elif ansible.returncode != 0:
-        abort('Error in Ansible: %s' % str(stderr))
-    inventory = yaml.load(stdout)
-except yaml.YAMLError as e:
-    abort('Error: Ansible returned invalid yaml data: %s' % str(e))
-except IOError:
-    abort('Error: Could not run Ansible')
+    inventory = ansible_inventory(conf['inventory_dir'], hostname)
+except KeyError as e:
+    abort('Error: %s' % e)
+except Exception as e:
+    abort('Error in Ansible: %s' % e)
 
 #
-# Collect and expand variables
+# Collect and render variables
 #
 
-# Add inventory
-data = inventory.copy()
+data = {}
 
-# Add server data
+# Get server data
 data.update({
     'os_name': os_name,
     'os_version': os_version,
@@ -112,29 +154,52 @@ data.update({
     'hostname': hostname,
 })
 
-# Expand vars_files
-vars_files = []
-for file in conf['vars_files']:
-    vars_files.append(
-        jinja2.Environment(loader=jinja2.BaseLoader).from_string(file).render(data)
-    )
+# Get and render defaults (content)
+if os.path.exists(conf['defaults']):
+    try:
+        data.update(j2_render_dict(yaml.load(open(conf['defaults'])), data))
+    except yaml.YAMLError as e:
+        abort('Error in %s: %s' % (conf['defaults'], e))
+    except jinja2.TemplateError as e:
+        abort('Template error in %s: %s\n \n%s' % (conf['defaults'], e, traceback.format_exc()))
+    except:
+        abort('Error: Could not read defaults file %s' % conf['defaults'])
 
-# Add vars_files data
+# Add inventory (content)
+data.update(inventory)
+
+# Render vars_files (files in config)
+vars_files = []
+try:
+    vars_files = j2_render_list(conf['vars_files'], data)
+except jinja2.TemplateError as e:
+    abort('Template error in vars_files (%s): %s\n \n%s' % (conf_file, e, traceback.format_exc()))
+
+# Get and render vars_files (content)
 for file in vars_files:
     if os.path.exists(os.path.join(conf['vars_dir'], file)):
         try:
-            data.update(yaml.load(open(os.path.join(conf['vars_dir'], file))))
+            data.update(j2_render_dict(yaml.load(open(os.path.join(conf['vars_dir'], file))), data))
         except yaml.YAMLError as e:
-            abort('Error in vars file %s' % str(e))
+            abort('Error in %s: %s' % (os.path.join(conf['vars_dir'], file), e))
+        except jinja2.TemplateError as e:
+            abort('Template error in %s: %s\n \n%s' % (file, e, traceback.format_exc()))
         except:
             abort('Error: Could not read vars file %s' % os.path.join(conf['vars_dir'], file))
 
-# Expand template_files
+# Render template_files (files in config)
 template_files = []
-for file in conf['template_files']:
-    template_files.append(
-        jinja2.Environment(loader=jinja2.BaseLoader).from_string(file).render(data)
-    )
+try:
+    template_files = j2_render_list(conf['template_files'], data)
+except jinja2.TemplateError as e:
+    abort('Template error in template_files (%s): %s\n \n%s' % (conf_file, e, traceback.format_exc()))
+
+# Render binary_files (files in config)
+binary_files = []
+try:
+    binary_files = j2_render_list(conf['binary_files'], data)
+except jinja2.TemplateError as e:
+    abort('Template error in binary_files (%s): %s\n \n%s' % (conf_file, e, traceback.format_exc()))
 
 # Find template
 template = ''
@@ -142,28 +207,66 @@ for file in template_files:
     if os.path.exists(os.path.join(conf['template_dir'], file)):
         template = file
         break
-if template == '':
-    abort('Error: No template found')
 
-# Add template data
-data.update({
-    'template': template,
-    'vars_files': vars_files,
-    'template_files': template_files,
-    'date': datetime.datetime.today().strftime('%Y-%m-%d'),
-    'time': datetime.datetime.today().strftime('%H:%M:%S'),
-})
+if template != '':
+    
+    #
+    # Load template
+    #
+    
+    # Add template data
+    data.update({
+        'template': template,
+        'vars_files': vars_files,
+        'template_files': template_files,
+        'binary_files': binary_files,
+        'template_dir': conf['template_dir'],
+        'binary_dir': conf['binary_dir'],
+        'vars_dir': conf['vars_dir'],
+        'defaults': conf['defaults'],
+        'date': datetime.datetime.today().strftime('%Y-%m-%d'),
+        'time': datetime.datetime.today().strftime('%H:%M:%S'),
+        # Update webserver variables here to make sure they cannot be overridden!
+        'os_name': os_name,
+        'os_version': os_version,
+        'filename': filename,
+        'hostname': hostname,
+    })
+    
+    try:
+        tpl = jinja2.Environment(
+            loader=jinja2.FileSystemLoader(conf['template_dir']),
+            trim_blocks=True,
+            undefined=jinja2.StrictUndefined
+        ).get_template(template)
 
-#
-# Load template
-#
+        print('Content-Type: text/plain\n')
+        print(tpl.render(data))
+    except Exception as e:
+        abort('Template error in %s: %s\n \n%s' % (template, e, traceback.format_exc()))
 
-try:
-    tpl = jinja2.Environment(
-        loader=jinja2.FileSystemLoader(conf['template_dir'])
-    ).get_template(template)
-    print(tpl.render(data))
-except jinja2.TemplateError as e:
-    abort('Error %s in %s: %s' % (str(e.__class__.__name__), template, str(e.message)))
-except:
-    abort('Error: Could not read template')
+else:
+
+    # Find binary file
+    binary = ''
+    for file in binary_files:
+        if os.path.exists(os.path.join(conf['binary_dir'], file)):
+            binary = os.path.join(conf['binary_dir'], file)
+            break
+
+    if binary != '':
+
+        #
+        # Deliver binary file
+        #
+
+        print('Content-Type: application/octet-stream\n')
+        sys.stdout.write(open(binary,"rb").read())
+
+    else:
+
+        #
+        # No template or binary found!
+        #
+
+        abort('Error: No template or binary found')

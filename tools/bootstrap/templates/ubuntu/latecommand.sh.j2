@@ -6,7 +6,7 @@
 #
 
 mkdir -p /etc/ansible/inventory
-git clone '{{ inventory_repo }}' /etc/ansible/inventory
+git clone --branch '{{ inventory_branch }}' '{{ inventory_repo }}' /etc/ansible/inventory
 [ $? -ne 0 ] && { echo >&2 'Unable to clone inventory repo!'; exit 1; }
 
 #
@@ -14,5 +14,5 @@ git clone '{{ inventory_repo }}' /etc/ansible/inventory
 #
 
 mkdir -p /etc/ansible/pull
-ansible-pull --accept-host-key -i /etc/ansible/inventory -d /etc/ansible/pull -U '{{ ansible_repo }}' site.yml
+ansible-pull --accept-host-key -i /etc/ansible/inventory -d /etc/ansible/pull -C '{{ ansible_branch }}' -U '{{ ansible_repo }}' site.yml
 [ $? -ne 0 ] && { echo >&2 'Ansible failed!'; exit 2; }

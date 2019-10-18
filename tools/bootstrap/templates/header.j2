@@ -1,8 +1,12 @@
 #
 # Generated for {{ hostname }} on {{ date }} {{ time }}
 #
-# From template (in descending search order):
-{%- for tpl in template_files %}
-# {{ "=>" if tpl == template else "- " }} {{ tpl }}
-{%- endfor %}
+# From template/binary (in descending search order):
+{% for tpl in template_files %}
+# {{ '=>' if tpl == template else '- ' }} {{ template_dir.split('/')[-1] ~ '/' ~ tpl }}
+{% endfor %}
+{% for bin in binary_files %}
+# -  {{ binary_dir.split('/')[-1] ~ '/' ~ bin }}
+{% endfor %}
 #
+

@@ -5,11 +5,11 @@
 from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
-import cgitb, os, socket, subprocess, yaml, binascii
+import os, socket, subprocess, yaml, binascii
 
-###### UNCOMMENT TO DEBUG #######
-# cgitb.enable(format = 'plain')
-#################################
+############# UNCOMMENT TO DEBUG ##############
+# import cgitb; cgitb.enable(format = 'plain')
+###############################################
 
 print('Content-Type: text/plain\n')
 

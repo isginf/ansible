@@ -9,7 +9,7 @@ d-i localechooser/supported-locales en_DK.UTF-8 de_CH.UTF-8
 # Keyboard
 #
 
-d-i keyboard-configuration/xkb-keymap select {{ keyboard | default('us') }}
+d-i keyboard-configuration/xkb-keymap select {{ keyboard }}
 
 #
 # Network
@@ -55,7 +55,7 @@ d-i time/zone string Europe/Zurich
 # Partitioning
 #
 
-d-i partman/early_command string pvremove -y -ff {{ disk | default('/dev/sda') }}* ; true
+d-i partman/early_command string pvremove -y -ff {{ disk }}* ; true
 
 d-i partman-lvm/device_remove_lvm boolean true
 d-i partman-lvm/device_remove_lvm_span boolean true
@@ -64,7 +64,7 @@ d-i partman-lvm/confirm boolean true
 d-i partman-lvm/confirm_nooverwrite boolean true
 d-i partman-auto/purge_lvm_from_device boolean true
 
-d-i partman-auto/disk string {{ disk | default('/dev/sda') }}
+d-i partman-auto/disk string {{ disk }}
 d-i partman-auto/method string lvm
 d-i partman-auto/choose_recipe select atomic
 
@@ -79,7 +79,7 @@ d-i partman-md/confirm boolean true
 # Booting
 #
 
-d-i grub-installer/bootdev string {{ disk | default('/dev/sda') }}
+d-i grub-installer/bootdev string {{ disk }}
 d-i grub-installer/only_debian boolean true
 
 #

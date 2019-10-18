@@ -4,6 +4,7 @@
 from __future__ import (absolute_import, division, print_function)
 __metaclass__ = type
 
+
 DOCUMENTATION = '''
   callback: friendly_log
   type: notification
@@ -141,11 +142,72 @@ MODULES = '''
   member:
     - result: group
       prepend: "+/etc/group # "
+  replace:
+    - result: invocation.module_args.path
+      prepend: +
+  lineinfile:
+    - result: invocation.module_args.path
+      prepend: +
+  lvol:
+    - result: invocation.module_args.lv
+      prepend: "# logical volume: "
+  filesystem:
+    - result: invocation.module_args.dev
+      prepend: "# formated: "
+  mount:
+    - result: invocation.module_args.path
+      prepend: "+/etc/fstab # "
+      when:
+        - result: invocation.module_args.state
+          matches: (mount|present|absent)
+  firewalld:
+    - result: invocation.module_args.zone
+      prepend: "# firewalld change in: zone "
+  yum:
+    - result: invocation.module_args.name
+      prepend: "# yum: install "
+      when:
+        - result: invocation.module_args.state
+          matches: (latest|present|installed)
+    - result: invocation.module_args.name
+      prepend: "# yum: remove "
+      when:
+        - result: invocation.module_args.state
+          matches: (absent|removed)
+  dnf:
+    - result: invocation.module_args.name
+      prepend: "# dnf: install "
+      when:
+        - result: invocation.module_args.state
+          matches: (latest|present|installed)
+    - result: invocation.module_args.name
+      prepend: "# dnf: remove "
+      when:
+        - result: invocation.module_args.state
+          matches: (absent|removed)
+  seboolean:
+    - result: invocation.module_args.name
+      prepend: "# sebool off: "
+      when:
+        - result: invocation.module_args.state
+          is: false
+        - result: invocation.module_args.persistent
+          is: true
+    - result: invocation.module_args.name
+      prepend: "# sebool on: "
+      when:
+        - result: invocation.module_args.state
+          is: true
+        - result: invocation.module_args.persistent
+          is: true
+  selinux:
+    - result: invocation.module_args.state
+      prepend: "# selinux: "
 '''
 
 from ansible.module_utils._text import to_bytes
 from ansible.plugins.callback import CallbackBase
-import time, yaml, os, re
+import time, yaml, json, os, re
 
 class ChangeLogger(object):
 
@@ -230,6 +292,9 @@ class ChangeLogger(object):
             elif 'count' in when:
                 if len(res) != when['count']:
                     ret = False
+            elif 'is' in when:
+                if len(res) != 1 or res[0] != when['is']:
+                    ret = False
             else:
                 continue # skip this condition
         return ret
@@ -254,6 +319,7 @@ class CallbackModule(CallbackBase):
 
     def set_options(self, task_keys=None, var_options=None, direct=None):
         super(CallbackModule, self).set_options(task_keys=task_keys, var_options=var_options, direct=direct)
+        self._last_fail = ''
         self._logfile = self.get_option('logfile')
         self._changelogger = ChangeLogger(
             self.get_option('changelogfile'),
@@ -279,21 +345,27 @@ class CallbackModule(CallbackBase):
 
         task = result._task.get_name().strip().split(" : ", 1)[-1]
 
+        # do status specific stuff (before cleaning results)
+        if status == 'changed':
+            self._changelogger.log(result)
+
+        self._clean_results(result._result, result._task.action)
+
         log = "at %s (%s)" % (path, task)
+
         # add item when in loop
         item = self._get_item_label(result._result)
         if item is not None:
-            log += " with item %s" % item
-        # add message if exists (e.g. on fail)
-        if 'msg' in result._result:
-            log += ": %s" % result._result['msg']
-        elif 'message' in result._result:
-            log += ": %s" % result._result['message']
+            log += " with item %s" % json.dumps(item)
+        
+        # add message if exists
+        if status == 'failed':
+            log += ": %s" % str(self._dump_results(result._result)).replace('\n', '\\n')
+        elif 'msg' in result._result and result._result['msg'] != '':
+            log += ": %s" % str(result._result['msg']).replace('\n', '\\n')
+        elif 'message' in result._result and result._result['message'] != '':
+            log += ": %s" % str(result._result['message']).replace('\n', '\\n')
         self._log("task %s" % status, log)
-
-        # do status specific stuff
-        if status == "changed":
-            self._changelogger.log(result)
 
     #
     # Overwrite plugin functions
@@ -310,12 +382,12 @@ class CallbackModule(CallbackBase):
         self._log("play start", "at %s (%s)" % (path, play.get_name().strip()))
 
     def v2_playbook_on_stats(self, stats):
-        t = stats.summarize(stats.processed.keys()[0])
-        self._log("play end", ", ".join("%s=%r" % (key,val) for (key,val) in t.iteritems()))
+        self._log("play end", "")
 
     def v2_runner_on_failed(self, result, ignore_errors=False):
-       if not result._task.loop:
-           self._log_task("failed", result)
+        # only log if not already logged for the item
+        if not result._task.loop or self._last_fail != result._task.get_path():
+            self._log_task("failed", result)
 
     def v2_runner_on_ok(self, result):
         if not result._task.loop:
@@ -334,6 +406,7 @@ class CallbackModule(CallbackBase):
         self._log_task("changed" if result._result.get("changed", False) else "ok", result)
 
     def v2_runner_item_on_failed(self, result):
+        self._last_fail = result._task.get_path()
         self._log_task("failed", result)
 
     def v2_runner_item_on_skipped(self, result):

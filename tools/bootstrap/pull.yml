@@ -6,7 +6,8 @@ commands:
   - git reset --hard
   - git clean -f
   - git pull
+  - git submodule update -f --init --recursive --remote
 
 repos:
-  inventory: ../inventory
+  inventory: .
   bootstrap: .

@@ -6,9 +6,14 @@ patterns:
   hostname: '[a-z0-9\.-]+\.example\.com'
   version: '[0-9a-zA-Z]+[0-9a-zA-Z_\.-]*'
 
+# File with IP in hex notation of host must exist there
+bootlink_check: false
+bootlink_dir: /var/lib/tftpboot/pxe/pxelinux.cfg
+
 # List of allowed OS and filenames
 filenames:
   ubuntu:
+    - ssh.keys
     - preseed.cfg
     - latecommand.sh
     - partitioning.sh
@@ -17,25 +22,28 @@ filenames:
     - postinstall.sh
 
 # Ansible inventory to pull
-inventory_dir: ../inventory
+inventory_dir: inventory
 
-# File with IP in hex notation of host must exist there
-bootlink_check: false
-bootlink_dir: /var/lib/tftpboot/pxe/pxelinux.cfg
+# Default variables (overridable by vars_files and inventory)
+defaults: defaults/main.yml
 
-# First found will be used
+# Variables (not overridable, all found files will be used in given order)
+vars_dir: vars
+vars_files:
+  - "all.yml"
+  - "{{ os_name }}.yml"
+  - "{{ os_name }}-{{ os_version }}.yml"
+  - "host_{{ hostname }}.yml"
+
+# Template search order for given filename (first found file will be used)
 template_dir: templates
 template_files:
   - "{{ os_name }}_{{ os_version }}/{{ filename }}.d/{{ hostname }}.j2"
   - "{{ os_name }}_{{ os_version }}/{{ filename }}.j2"
   - "{{ os_name }}/{{ filename }}.d/{{ hostname }}.j2"
   - "{{ os_name }}/{{ filename }}.j2"
-  - "default.j2"
 
-# All found will be used
-vars_dir: vars
-vars_files:
-  - "all.yml"
-  - "{{ os_name }}.yml"
-  - "{{ os_name }}_{{ os_version }}.yml"
-  - "host_{{ hostname }}.yml"
+# Binary search order if no template matches for given filename (first found file will be used)
+binary_dir: files
+binary_files:
+  - "{{ filename }}"

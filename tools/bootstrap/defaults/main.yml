@@ -1,0 +1,8 @@
+---
+
+inventory_branch: master
+ansible_branch: master
+
+root_pw: $1$ThisIsAnExamplePasswordHashForEtcShadow
+disk: /dev/sda
+keyboard: us
